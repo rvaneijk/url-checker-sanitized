@@ -16,7 +16,7 @@ Continuous system monitoring (called "[Real-time Monitoring](#glossary-of-terms)
 
 ## Source Code
 
-You can find the code [here](https://github.com/rvaneijk/url-checker). This code has been sanitized, meaning all sensitive information like passwords, API keys, and internal system details have been removed and replaced with example values.
+You can find the code [here](https://github.com/rvaneijk/url-checker-sanitized). This code has been sanitized, meaning all sensitive information like passwords, API keys, and internal system details have been removed and replaced with example values.
 
 ## Contents
 
