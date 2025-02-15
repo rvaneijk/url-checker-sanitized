@@ -1,0 +1,930 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: '[sanitized] API Base Resources with Google Safe Browsing Integration'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name for resource tagging
+  
+  DebugMode:
+    Type: String
+    Default: true
+    AllowedValues: [true, false]
+    Description: Enable debug logging for Lambda function
+  
+  DomainStackName:
+    Type: String
+    Description: Name of the domain setup stack
+    
+  RateLimit:
+    Type: Number
+    Default: 1000
+    Description: Requests per second rate limit
+    
+  BurstLimit:
+    Type: Number
+    Default: 2000
+    Description: Maximum burst size for API requests
+    
+  # Parameter for the Google Safe Browsing API key has been removed.
+  # It will need to be added to the Secrets Manager manually.
+  #  [sanitized]:
+  #    Type: String
+  #    Default: [sanitized]ApiKey
+  #    Description: Name of the secret containing Google Safe Browsing API key
+
+  CorsOrigin:
+    Type: String
+    Default: https://example.com
+    Description: Allowed CORS origin domain
+    AllowedPattern: '^https://[a-zA-Z0-9-.]+'
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                # Resource:!Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${[sanitized]}-*'
+                # The resource for Secrets Manager access has been removed.
+                # It will need to be added manually based on the actual secret name.
+      Tags:
+        - Key: Environment
+          Value:!Ref Environment
+        - Key: Service
+          Value: [sanitized]
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  URLCheckerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaExecutionRole
+    Properties:
+      Handler: index.handler
+      Role:!GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+          const https = require('https');
+
+          const secretsManager = new SecretsManagerClient();
+          
+          // Security headers adjusted for HTML responses
+          const securityHeaders = {
+            'Content-Type': 'text/html; charset=UTF-8',
+            'Strict-Transport-Security': 'max-age=31622400; includeSubdomains',
+            'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Permissions-Policy': 'sync-xhr=(), autoplay=(), accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()',
+            'X-XSS-Protection': '0',
+            'Referrer-Policy': 'no-referrer',
+            'Cache-Control': 'no-store, max-age=0',
+            'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || 'https://example.com',
+            'Vary': 'Origin'
+          };
+          
+          // JSON response headers
+          const jsonHeaders = {
+            'Content-Type': 'application/json',
+            'Strict-Transport-Security': 'max-age=31622400; includeSubdomains',
+            'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Permissions-Policy': 'sync-xhr=(), autoplay=(), accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()',
+            'X-XSS-Protection': '0',
+            'Referrer-Policy': 'no-referrer',
+            'Cache-Control': 'no-store, max-age=0',
+            'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || 'https://example.com',
+            'Vary': 'Origin'
+          };
+          
+          // Helper function to escape HTML special characters
+          function escapeHtml(unsafe) {
+            return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+          }
+          
+          // Helper function to make HTTPS requests
+          async function makeHttpsRequest(options, data) {
+            return new Promise((resolve, reject) => {
+              const req = https.request(options, (res) => {
+                let responseData = '';
+                res.on('data', (chunk) => { responseData += chunk; });
+                res.on('end', () => { resolve({ statusCode: res.statusCode, data: responseData }); });
+              });
+              
+              req.on('error', (error) => { reject(error); });
+              if (data) req.write(data);
+              req.end();
+            });
+          }
+          
+          function generateWarningPage(unsafeUrl, errorInfo = null) {
+                      const escapedUrl = escapeHtml(unsafeUrl);
+                      
+                      // Properly escape JSON for HTML insertion
+                      const escapedErrorInfo = errorInfo 
+                        ? escapeHtml(JSON.stringify(errorInfo, null, 2)) 
+                        : escapeHtml(JSON.stringify({
+                              error: "Onbekende fout",
+                              reason: "Kan geen specifieke reden vinden",
+                              url: unsafeUrl
+                          }, null, 2));
+                    
+                      return `<!DOCTYPE html>
+                      <html lang="nl">
+                      <head>
+                          <meta charset="UTF-8">
+                          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                          <title>Pas op! Deze pagina is mogelijk niet veilig.</title>
+                          <style>
+                              html, body {
+                                  height: 100%;
+                                  margin: 0;
+                                  padding: 0;
+                              }
+                              body {
+                                  display: flex;
+                                  justify-content: center;
+                                  align-items: center;
+                                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                                  background-color: #8B0000;
+                                  color: white;
+                              }
+                            .main-content {
+                                  max-width: 500px;
+                                  width: 90%;
+                                  padding: 20px;
+                                  text-align: left;
+                              }
+                            .header-container {
+                                  display: flex;
+                                  align-items: center;
+                                  gap: 15px;
+                                  margin-bottom: 20px;
+                              }
+                            .warning-icon {
+                                  width: 36px;
+                                  height: 36px;
+                              }
+                              h1 {
+                                  margin: 0;
+                                  font-size: 24px;
+                                  font-weight: normal;
+                              }
+                              p {
+                                  font-size: 16px;
+                                  margin-bottom: 20px;
+                              }
+                            .description,.warning-details p,.info-link {
+                                  font-size: 16px;
+                                  margin-bottom: 20px;
+                              }
+                            .advisory {
+                                  margin-bottom: 40px; /* Increased space before buttons */
+                                  font-size: 16px;
+                              }
+                            .button-container {
+                                  display: flex;
+                                  justify-content: flex-end;
+                                  gap: 10px;
+                                  margin-bottom: 30px;
+                              }
+                            .button {
+                                  padding: 8px 16px;
+                                  border: none;
+                                  border-radius: 4px;
+                                  cursor: pointer;
+                                  font-size: 14px;
+                              }
+                            .primary {
+                                  background-color: white;
+                                  color: #333;
+                              }
+                            .secondary {
+                                  background-color: #8B0000;
+                                  color: white;
+                                  border: 1px solid white;
+                              }
+                            .details-box {
+                                  background: white;
+                                  padding: 30px;
+                                  color: #333;
+                                  margin-top: 20px;
+                                  display: none;
+                              }
+                            .details-box.show {
+                                  display: block;
+                              }
+                              a {
+                                  color: white;
+                                  text-decoration: underline;
+                              }
+                            .details-box a {
+                                  color: #0066cc;
+                              }
+                              code {
+                                  display: block;
+                                  background: #f5f5f5;
+                                  padding: 8px;
+                                  margin: 4px 0 20px 0;
+                                  border-radius: 4px;
+                                  font-family: monospace;
+                                  font-size: 12px;
+                                  white-space: pre-wrap;
+                                  word-break: break-all;
+                              }
+                            .details-box h3 {
+                                  margin-top: 30px;
+                                  margin-bottom: 15px;
+                              }
+                            .warning-details {
+                                  margin-bottom: 30px;
+                              }
+                            .warning-details ul {
+                                  margin-top: 10px;
+                                  padding-left: 20px;
+                              }
+                            .ignore-warning {
+                                  margin: 20px 0;
+                                  font-size: 16px;
+                              }
+                              @media (max-width: 600px) {
+                                .main-content {
+                                      width: 95%;
+                                      padding: 15px;
+                                  }
+                                  h1 {
+                                      font-size: 20px;
+                                  }
+                                .advisory {
+                                      margin-bottom: 20px; /* Reduce space on mobile */
+                                  }
+                                .button-container {
+                                      flex-direction: column;
+                                      justify-content: center;
+                                      align-items: center;
+                                  }
+                                .button {
+                                      width: 100%;
+                                      margin-bottom: 10px;
+                                  }
+                              }
+                          </style>
+                      </head>
+                      <body>
+                          <div class="main-content">
+                              <div class="header-container">
+                                  <svg class="warning-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+                                      <path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 16h2v2h-2zm0-6h2v4h-2z"/>
+                                  </svg>
+                                  <h1>Pas op! Deze pagina is mogelijk niet veilig.</h1>
+                              </div>
+                      
+                              <p class="description">check.example.com heeft een mogelijk onveilige link gedetecteerd.</p>
+                              
+                              <div class="warning-details">
+                                  <p>Deze pagina is geblokkeerd omdat:</p>
+                                  <ul>
+                                      <li>De website is gerapporteerd als mogelijk schadelijk</li>
+                                      <li>Er bestaat een risico op phishing of malware</li>
+                                      <li>Uw gegevens kunnen mogelijk worden misbruikt</li>
+                                  </ul>
+                              </div>
+                              
+                              <p class="info-link">Klik <a href="https://veiliginternetten.nl/">hier</a> om meer te leren over veilig internetten.</p>
+                              
+                              <p class="advisory">Beveiligingswaarschuwing van Example Organization</p>
+                              
+                              <div class="button-container">
+                                  <button class="button secondary" onclick="toggleDetails()">Details</button>
+                              </div>
+                              
+                              <div id="detailsBox" class="details-box">
+                                  <h3>Technische details</h3>
+                                  <code><span class="math-inline">\{escapedErrorInfo\}</code\>
+<p class\="ignore\-warning"\>Je kunt deze waarschuwing negeren door <a href\="</span>{escapedUrl}">hier</a> verder te gaan.</p>
+                              </div>
+                          </div>
+                      
+                          <script>
+                              function toggleDetails() {
+                                  const detailsBox = document.getElementById('detailsBox');
+                                  detailsBox.classList.toggle('show');
+                                                                }
+                                                            </script>
+            </body>
+            </html>`;
+          }
+          
+          // Trusted authentication and OTP domains
+          const TRUSTED_AUTH_DOMAINS = new Set([
+            // Email providers
+            'accounts.google.com',
+            'login.microsoftonline.com',
+            'login.live.com',
+            'login.yahoo.com',
+            // SSO providers
+            'login.okta.com',
+            'auth0.com',
+            'login.duosecurity.com',
+            'secure.onelogin.com',
+            'login.pingone.com',
+            // Cloud platforms
+            'signin.aws.amazon.com',
+            'cloud.digitalocean.com',
+            'console.cloud.google.com',
+            'portal.azure.com',
+            // Common services
+            'github.com',
+            'gitlab.com',
+            'bitbucket.org',
+            'id.atlassian.com',
+            'login.salesforce.com',
+            'account.auth.xero.com',
+            'login.slack.com'
+          ]);
+          
+          // Common authentication path patterns to allow
+          const AUTH_PATH_PATTERNS = [
+            /\/oauth2?\//i,
+            /\/login\/*/i,
+            /\/signin\/*/i,
+            /\/sso\/*/i,
+            /\/saml\/*/i,
+            /\/auth\/*/i,
+            /\/authenticate/i,
+            /\/verify-email/i,
+            /\/reset-password/i,
+            /\/verify-otp/i,
+            /\/confirm-email/i,
+            /\/magic-link/i,
+            /\/passwordless/i,
+            /\/verification/i,
+            /\/mfa\//i,
+            /\/2fa\//i,
+            /\/two-factor/i
+          ];
+          
+          // Common authentication parameter names to allow
+          const AUTH_PARAM_PATTERNS = [
+            /^token=/i,
+            /^code=/i,
+            /^otp=/i,
+            /^auth=/i,
+            /^apikey=/i,
+            /^key=/i,
+            /^state=/i,
+            /^nonce=/i,
+            /^verify=/i,
+            /^confirmation=/i,
+            /^signature=/i,
+            /^access_token=/i,
+            /^id_token=/i,
+            /^callback=/i
+          ];
+          
+          // Check if URL is a known authentication endpoint
+          function isAuthenticationUrl(urlObj) {
+            // Check if domain is in trusted list
+            const hostname = urlObj.hostname.toLowerCase();
+            if (TRUSTED_AUTH_DOMAINS.has(hostname)) {
+              return true;
+            }
+          
+            // Check for authentication path patterns
+            if (AUTH_PATH_PATTERNS.some(pattern => pattern.test(urlObj.pathname))) {
+              return true;
+            }
+          
+            // Check for authentication parameters
+            const searchParams = new URLSearchParams(urlObj.search);
+            for (const [key] of searchParams) {
+              if (AUTH_PARAM_PATTERNS.some(pattern => pattern.test(`${key}=`))) {
+                return true;
+              }
+            }
+          
+            return false;
+          }
+          
+          // Basic URL validation function with auth exemptions
+          function validateUrl(urlString) {
+            try
+
+{
+              const urlObj = new URL(urlString);
+          
+              // Check URL length
+              if (urlString.length > 2048) {
+                return { valid: false, reason: 'URL exceeds maximum length' };
+              }
+          
+              // Only allow HTTP(S)
+              if (!['http:', 'https:'].includes(urlObj.protocol)) {
+                return { valid: false, reason: 'Invalid protocol - only HTTP(S) allowed' };
+              }
+          
+              const hostname = urlObj.hostname.toLowerCase();
+          
+              // Always block cloud metadata endpoints regardless of auth status
+              if (/169\.254\.169\.254|metadata\.(google|azure)\.internal|100\.100\.100\.200/i.test(hostname)) {
+                return { valid: false, reason: 'Access to cloud metadata endpoints not allowed' };
+              }
+          
+              // Check for authentication URL exemptions before blocking internal addresses
+              if (isAuthenticationUrl(urlObj)) {
+                return { valid: true, isAuthUrl: true };
+              }
+          
+              // Block internal/private addresses with simplified information
+              if (hostname === 'localhost' || 
+                  /^127\.|^192\.168\.|^10\.|^172\.(1|2|3)\./i.test(hostname) ||
+                  hostname.endsWith('.local') ||
+                  hostname.endsWith('.localhost')) {
+                return { 
+                  valid: false, 
+                  reason: 'Private network access is not allowed for security reasons',
+                  url: urlString
+                };
+              }
+          
+              return { valid: true };
+            } catch (error) {
+              return { valid: false, reason: 'Invalid URL format' };
+            }
+          }
+          
+          // Check URL against the Google Safe Browsing API
+          async function checkUrlSafety(url, apiKey) {
+            const requestBody = JSON.stringify({
+              client: {
+                clientId: "[sanitized]-checker",
+                clientVersion: "1.0.0"
+              },
+              threatInfo: {
+                threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+                platformTypes: ["ANY_PLATFORM"],
+                threatEntryTypes: ["URL"],
+                threatEntries: [{ url: url }]
+              }
+            });
+            
+            const options = {
+              hostname: 'safebrowsing.googleapis.com',
+              path: '/v4/threatMatches:find?key=' + apiKey,
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': requestBody.length
+              }
+            };
+            
+            try {
+              const response = await makeHttpsRequest(options, requestBody);
+              const result = JSON.parse(response.data);
+              return Object.keys(result).length === 0; // Empty response means URL is safe
+            } catch (error) {
+              console.error('Safe Browsing API error:', error);
+              throw error;
+            }
+          }
+          
+          exports.handler = async (event, context) => {
+            const DEBUG = process.env.DEBUG === 'true';
+            
+            if (DEBUG) {
+              console.log('Event:', JSON.stringify(event, null, 2));
+              console.log('Context:', JSON.stringify({
+                functionName: context.functionName,
+                functionVersion: context.functionVersion,
+                invokedFunctionArn: context.invokedFunctionArn,
+                memoryLimitInMB: context.memoryLimitInMB,
+                awsRequestId: context.awsRequestId,
+                logGroupName: context.logGroupName,
+                logStreamName: context.logStreamName,
+              }, null, 2));
+            }
+            
+            // Handle root path
+            if (event.path === '/') {
+              return {
+                statusCode: 302,
+                headers: {
+                ...jsonHeaders,
+                 'Location': 'https://example.com'
+                },
+                body: JSON.stringify({ 
+                  message: 'Redirecting to Example Organization homepage',
+                  destination: 'https://example.com'
+                })
+              };
+            }
+            
+            try {
+              const url = event.queryStringParameters?.url;
+              
+              if (!url) {
+                return {
+                  statusCode: 400,
+                  headers: jsonHeaders,
+                  body: JSON.stringify({ 
+                    error: 'Missing parameter',
+                    message: 'URL parameter is required' 
+                  })
+                };
+              }
+              
+              // URL validation with auth exemptions
+              const validationResult = validateUrl(url);
+              if (!validationResult.valid) {
+                if (DEBUG) console.log('URL validation failed:', validationResult.reason);
+
+              // Generate a warning page for local/private network addresses
+              if (!validationResult.valid) {
+                return {
+                  statusCode: 403,
+                  headers: securityHeaders,
+                  body: generateWarningPage(url, {
+                    error: 'Private Network Access Blocked',
+                    reason: validationResult.reason,
+                    url: url
+                  })
+                };
+              }
+
+
+                return {
+                  statusCode: 400,
+                  headers: jsonHeaders,
+                  body: JSON.stringify({ 
+                    error: 'Invalid URL',
+                    reason: validationResult.reason,
+                    url: url 
+                  })
+                };
+              }
+          
+              if (DEBUG) console.log('Processing URL:', url, validationResult.isAuthUrl? '(Auth URL)': '');
+              
+              // Skip Safe Browsing check for known auth URLs if configured
+              if (validationResult.isAuthUrl) {
+                if (DEBUG) console.log('Auth URL detected, skipping safety check');
+                return {
+                  statusCode: 302,
+                  headers: {
+                  ...jsonHeaders,
+                    'Location': url
+                  },
+                  body: JSON.stringify({ 
+                    message: 'Authentication URL verified - redirecting',
+                    isAuthUrl: true,
+                    url: url
+                  })
+                };
+              }
+              
+              // Get API key from Secrets Manager
+              const command = new GetSecretValueCommand({
+                SecretId: process.env.SAFE_BROWSING_SECRET_NAME
+              });
+              
+              if (DEBUG) console.log('Fetching API key from Secrets Manager');
+              const secret = await secretsManager.send(command);
+              const apiKey = JSON.parse(secret.SecretString).[sanitized]ApiKey;
+              
+              // Check URL safety
+              if (DEBUG) console.log('Checking URL safety with Safe Browsing API');
+              const isSafe = await checkUrlSafety(url, apiKey);
+              
+              if (isSafe) {
+                if (DEBUG) console.log('URL is safe, redirecting');
+                return {
+                  statusCode: 302,
+                  headers: {
+                  ...jsonHeaders,
+                    'Location': url
+                  },
+                  body: JSON.stringify({ 
+                    message: 'URL is safe - redirecting',
+                    url: url
+                  })
+                };
+              } else {
+                if (DEBUG) console.log('URL is unsafe, showing warning page');
+                return {
+                  statusCode: 403,
+                  headers: securityHeaders,
+                  body: generateWarningPage(url, {
+                    error: 'Unsafe URL',
+                    reason: 'URL has been flagged as potentially unsafe',
+                    url: url
+                  })
+                };
+              }
+              
+            } catch (error) {
+              console.error('Error:', error);
+              
+              // Return a generic error to the client
+              return {
+                statusCode: 500,
+                headers: jsonHeaders,
+                body: JSON.stringify({ 
+                  error: 'Internal server error',
+                  message: 'An unexpected error occurred while processing your request',
+                  requestId: context.awsRequestId
+                })
+              };
+            }
+          }
+      Runtime: nodejs18.x
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          DEBUG:!Ref DebugMode
+          DOMAIN_NAME:!ImportValue 
+            Fn::Sub: <span class="math-inline">\{DomainStackName\}\-CustomDomainName
+\# SAFE\_BROWSING\_SECRET\_NAME\:\!Ref [sanitized]
+\# The environment variable for the Safe Browsing secret name has been removed\.
+\# It will need to be added manually based on the actual secret name\.
+CORS\_ORIGIN\:\!Ref CorsOrigin
+Tags\:
+\- Key\: Environment
+Value\:\!Ref Environment
+\- Key\: Service
+Value\: [sanitized]
+\- Key\: ManagedBy
+Value\: CloudFormation
+\# New CloudWatch Alarm resource
+URLCheckerFunctionErrorAlarm\:
+Type\: AWS\:\:CloudWatch\:\:Alarm
+Properties\:
+AlarmDescription\: Alert when URL Checker Lambda has errors
+Namespace\: AWS/Lambda
+MetricName\: Errors
+Dimensions\:
+\- Name\: FunctionName
+Value\:\!Ref URLCheckerFunction
+Statistic\: Sum
+Period\: 300
+EvaluationPeriods\: 1
+Threshold\: 1
+ComparisonOperator\: GreaterThanThreshold
+TreatMissingData\: notBreaching
+Tags\:
+\- Key\: Environment
+Value\:\!Ref Environment
+\- Key\: Service
+Value\: [sanitized]
+\- Key\: ManagedBy
+Value\: CloudFormation
+[sanitized]API\:
+Type\: AWS\:\:ApiGateway\:\:RestApi
+Properties\:
+Name\: [sanitized] URL Checker API
+Description\: API for checking URLs through [sanitized] service
+EndpointConfiguration\:
+Types\:
+\- REGIONAL
+Tags\:
+\- Key\: Environment
+Value\:\!Ref Environment
+\- Key\: Service
+Value\: [sanitized]
+\- Key\: ManagedBy
+Value\: CloudFormation
+APIGatewayResponse\:
+Type\: 'AWS\:\:ApiGateway\:\:GatewayResponse'
+Properties\:
+RestApiId\:\!Ref [sanitized]API
+ResponseType\: DEFAULT\_4XX
+ResponseParameters\:
+gatewayresponse\.header\.Access\-Control\-Allow\-Origin\:\!Sub "'</span>{CorsOrigin}'"
+        gatewayresponse.header.Vary: "'Origin'"
+        gatewayresponse.header.Content-Type: "'application/json'"
+        gatewayresponse.header.Strict-Transport-Security: "'max-age=31622400; includeSubdomains'"
+        gatewayresponse.header.Content-Security-Policy: "'default-src ''none''; frame-ancestors ''none'''"
+        gatewayresponse.header.X-Content-Type-Options: "'nosniff'"
+        gatewayresponse.header.X-Frame-Options: "'DENY'"
+        gatewayresponse.header.Permissions-Policy: "'sync-xhr=(), autoplay=(), accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()'"
+        gatewayresponse.header.X-XSS-Protection: "'0'"
+        gatewayresponse.header.Referrer-Policy: "'no-referrer'"
+        gatewayresponse.header.Cache-Control: "'no-store, max-age=0'"
+
+  APIGatewayResponse5XX:
+    Type: 'AWS::ApiGateway::GatewayResponse'
+    Properties:
+      RestApiId:!Ref [sanitized]API
+      ResponseType: DEFAULT_5XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin:!Sub "'<span class="math-inline">\{CorsOrigin\}'"
+gatewayresponse\.header\.Vary\: "'Origin'"
+gatewayresponse\.header\.Content\-Type\: "'application/json'"
+gatewayresponse\.header\.Strict\-Transport\-Security\: "'max\-age\=31622400; includeSubdomains'"
+gatewayresponse\.header\.Content\-Security\-Policy\: "'default\-src ''none''; frame\-ancestors ''none'''"
+gatewayresponse\.header\.X\-Content\-Type\-Options\: "'nosniff'"
+gatewayresponse\.header\.X\-Frame\-Options\: "'DENY'"
+gatewayresponse\.header\.Permissions\-Policy\: "'sync\-xhr\=\(\), autoplay\=\(\), accelerometer\=\(\), camera\=\(\), geolocation\=\(\), gyroscope\=\(\), magnetometer\=\(\), microphone\=\(\), payment\=\(\), usb\=\(\), interest\-cohort\=\(\)'"
+gatewayresponse\.header\.X\-XSS\-Protection\: "'0'"
+gatewayresponse\.header\.Referrer\-Policy\: "'no\-referrer'"
+gatewayresponse\.header\.Cache\-Control\: "'no\-store, max\-age\=0'"
+APIMissingAuthResponse\:
+Type\: 'AWS\:\:ApiGateway\:\:GatewayResponse'
+Properties\:
+RestApiId\:\!Ref [sanitized]API
+ResponseType\: MISSING\_AUTHENTICATION\_TOKEN
+ResponseParameters\:
+gatewayresponse\.header\.Access\-Control\-Allow\-Origin\:\!Sub "'</span>{CorsOrigin}'"
+        gatewayresponse.header.Vary: "'Origin'"
+        gatewayresponse.header.Content-Type: "'application/json'"
+        gatewayresponse.header.Strict-Transport-Security: "'max-age=31622400; includeSubdomains'"
+        gatewayresponse.header.Content-Security-Policy: "'default-src ''none''; frame-ancestors ''none'''"
+        gatewayresponse.header.X-Content-Type-Options: "'nosniff'"
+        gatewayresponse.header.X-Frame-Options: "'DENY'"
+        gatewayresponse.header.Permissions-Policy: "'sync-xhr=(), autoplay=(), accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()'"
+        gatewayresponse.header.X-XSS-Protection: "'0'"
+        gatewayresponse.header.Referrer-Policy: "'no-referrer'"
+        gatewayresponse.header.Cache-Control: "'no-store, max-age=0'"
+
+  APIAuthorizerResponse:
+    Type: 'AWS::ApiGateway::GatewayResponse'
+    Properties:
+      RestApiId:!Ref [sanitized]API
+      ResponseType: UNAUTHORIZED
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin:!Sub "'${CorsOrigin}'"
+        gatewayresponse.header.Vary: "'Origin'"
+        gatewayresponse.header.Content-Type: "'application/json'"
+        gatewayresponse.header.Strict-Transport-Security: "'max-age=31622400; includeSubdomains'"
+        gatewayresponse.header.Content-Security-Policy: "'default-src ''none''; frame-ancestors ''none'''"
+        gatewayresponse.header.X-Content-Type-Options: "'nosniff'"
+        gatewayresponse.header.X-Frame-Options: "'DENY'"
+        gatewayresponse.header.Permissions-Policy: "'sync-xhr=(), autoplay=(), accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()'"
+        gatewayresponse.header.X-XSS-Protection: "'0'"
+        gatewayresponse.header.Referrer-Policy: "'no-referrer'"
+        gatewayresponse.header.Cache-Control: "'no-store, max-age=0'"
+
+  APIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - CheckMethod
+      - OptionsMethod
+      - RootMethod
+      - LambdaPermission
+      - [sanitized]API
+      - APIGatewayResponse
+      - APIGatewayResponse5XX
+      - APIMissingAuthResponse
+      - APIAuthorizerResponse
+    Properties:
+      RestApiId:!Ref [sanitized]API
+      Description: Initial deployment
+
+  ApiGatewayUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: APIDeployment
+    Properties:
+      UsagePlanName:!Sub <span class="math-inline">\{AWS\:\:StackName\}\-usage\-plan
+Description\: Usage plan for [sanitized] API
+Quota\:
+Limit\:\!Ref RateLimit
+Period\: DAY
+Throttle\:
+BurstLimit\:\!Ref BurstLimit
+RateLimit\:\!Ref RateLimit
+Tags\:
+\- Key\: Environment
+Value\:\!Ref Environment
+\- Key\: Service
+Value\: [sanitized]
+\- Key\: ManagedBy
+Value\: CloudFormation
+RootMethod\:
+Type\: AWS\:\:ApiGateway\:\:Method
+Properties\:
+RestApiId\:\!Ref [sanitized]API
+ResourceId\:\!GetAtt [sanitized]API\.RootResourceId
+HttpMethod\: GET
+AuthorizationType\: NONE
+Integration\:
+Type\: AWS\_PROXY
+IntegrationHttpMethod\: POST
+Uri\:\!Sub arn\:aws\:apigateway\:</span>{AWS::Region}:lambda:path/sanitized-yyy-mm-dd/functions/<span class="math-inline">\{URLCheckerFunction\.Arn\}/invocations
+CheckResource\:
+Type\: AWS\:\:ApiGateway\:\:Resource
+DependsOn\: [sanitized]API
+Properties\:
+RestApiId\:\!Ref [sanitized]API
+ParentId\:\!GetAtt [sanitized]API\.RootResourceId
+PathPart\: check
+CheckMethod\:
+Type\: AWS\:\:ApiGateway\:\:Method
+DependsOn\: 
+\- CheckResource
+\- URLCheckerFunction
+\- [sanitized]API
+Properties\:
+RestApiId\:\!Ref [sanitized]API
+ResourceId\:\!Ref CheckResource
+HttpMethod\: GET
+AuthorizationType\: NONE
+Integration\:
+Type\: AWS\_PROXY
+IntegrationHttpMethod\: POST
+Uri\:\!Sub arn\:aws\:apigateway\:</span>{AWS::Region}:lambda:path/sanitized-yyy-mm-dd/functions/${URLCheckerFunction.Arn}/invocations
+
+  OptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties
+RestApiId:!Ref [sanitized]API
+      ResourceId:!Ref CheckResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin:!Sub "'${CorsOrigin}'"
+              method.response.header.Vary: "'Origin'"
+              method.response.header.Access-Control-Max-Age: "'3600'"
+              method.response.header.Cache-Control: "'no-store, max-age=0'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Cache-Control: true
+            method.response.header.Vary: true
+            method.response.header.Access-Control-Max-Age: true
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - URLCheckerFunction
+      - [sanitized]API
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:!Ref URLCheckerFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:!Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${[sanitized]API}/*
+
+Outputs:
+  StackName:
+    Description: Stack Name
+    Value:!Ref AWS::StackName
+    Export:
+      Name:!Sub ${AWS::StackName}-StackName
+
+  APIId:
+    Description: REST API ID
+    Value:!Ref [sanitized]API
+    Export:
+      Name:!Sub ${AWS::StackName}-APIId
+  
+  DeploymentId:
+    Description: API Deployment ID
+    Value:!Ref APIDeployment
+    Export:
+      Name:!Sub ${AWS::StackName}-DeploymentId
+
+  LambdaFunctionName:
+    Description: Lambda Function Name
+    Value:!Ref URLCheckerFunction
+    Export:
+      Name:!Sub ${AWS::StackName}-LambdaFunctionName
+      
+  UsagePlanId:
+    Description: API Usage Plan ID
+    Value:!Ref ApiGatewayUsagePlan
+    Export:
+      Name:!Sub ${AWS::StackName}-UsagePlanId

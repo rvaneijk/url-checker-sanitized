@@ -1,0 +1,357 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: WorkMail URL Rewriter with S3 Storage using SAM
+
+Parameters:
+  OrganizationId:
+    Type: String
+    Description: WorkMail Organization ID
+  
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Deployment environment
+
+Resources:
+  # S3 Bucket for Email Storage
+  UpdatedEmailS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName:!Sub '[sanitized]-mail-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: MailDirectoryCleanup
+            Status: Enabled
+            ExpirationInDays: 1
+            Prefix: mail/
+          - Id: MailVersionCleanup
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 1
+            Prefix: mail/
+      Tags:
+        - Key: Purpose
+          Value: WorkMail-Updates
+        - Key: EmailStorage
+          Value: mail-directory
+        - Key: Environment
+          Value:!Ref Environment
+
+  # S3 Bucket Policy
+  UpdatedEmailS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:!Ref UpdatedEmailS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowWorkMailMessageFlow
+            Effect: Allow
+            Principal:
+              Service: workmailmessageflow.amazonaws.com
+            Action:
+              - "s3:GetObject"
+              - "s3:PutObject"
+              - "s3:GetObjectVersion"
+              - "s3:ListBucket"
+            Resource: 
+              -!Sub "${UpdatedEmailS3Bucket.Arn}"
+              -!Sub "${UpdatedEmailS3Bucket.Arn}/mail/*"
+            Condition:
+              StringLike:
+                aws:SourceArn:!Sub "arn:aws:workmailmessageflow:${AWS::Region}:${AWS::AccountId}:message/*"
+              Bool:
+                aws:SecureTransport: true
+
+  # Lambda Function using SAM
+  WorkMailUrlRewriteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:!Sub '${AWS::StackName}-rewriter'
+      CodeUri: src/
+      Handler: app.rewrite_handler
+      Runtime: python3.9
+      Timeout: 15  # Reduced from 30s Rationale: 571ms typical execution + ~2s for max size email (30MB), Add 3x buffer for URL processing, 15s provides adequate headroom while failing fast if issues occur
+      MemorySize: 256  # Optimal for 30MB max email size
+      Layers:
+        -!Sub arn:aws:lambda:${AWS::Region}:123457890123:layer:WorkMailLambdaLayer:2
+      Environment:
+        Variables:
+          UPDATED_EMAIL_S3_BUCKET:!Ref UpdatedEmailS3Bucket
+          ENVIRONMENT:!Ref Environment
+          MAIL_PREFIX: mail/
+      Policies:
+        # S3 permissions using SAM policy templates
+        - S3CrudPolicy:
+            BucketName:!Ref UpdatedEmailS3Bucket
+        # WorkMail permissions
+        - Statement:
+            - Effect: Allow
+              Action:
+                - workmailmessageflow:GetRawMessageContent
+                - workmailmessageflow:PutRawMessageContent
+              Resource:!Sub 'arn:aws:workmailmessageflow:${AWS::Region}:${AWS::AccountId}:message/*'
+      Tracing: Active  # Remove or set to PassThrough*
+      Tags:
+        Environment:!Ref Environment
+
+  # Lambda Permission for WorkMail
+  WorkMailPermissionToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:!Ref WorkMailUrlRewriteFunction
+      Principal:!Sub 'workmail.${AWS::Region}.amazonaws.com'
+      SourceArn:!Sub 'arn:aws:workmail:${AWS::Region}:${AWS::AccountId}:organization/${OrganizationId}'
+
+  # Lambda Alarm for Errors
+  WorkMailFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:!Sub "${AWS::StackName}-WorkMailFunctionErrorAlarm-${AWS::Region}"
+      AlarmDescription: Alert when WorkMail Lambda has errors
+      ActionsEnabled: true
+      OKActions:
+      AlarmActions:
+      InsufficientDataActions:
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Dimensions:
+        - Name: FunctionName
+          Value:!Ref WorkMailUrlRewriteFunction
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  # CloudWatch Dashboard for WorkMail Lambda
+  WorkMailFunctionDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName:!Sub "${AWS::StackName}-metrics"
+      DashboardBody:!Sub |
+        {
+         "widgets": [
+             {
+                 "height": 6,
+                 "width": 24,
+                 "y": 12,
+                 "x": 0,
+                 "type": "log",
+                 "properties": {
+                     "query": "SOURCE '/aws/lambda/sanitized_lambda_function' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100",
+                     "region": "my-region",
+                     "stacked": false,
+                     "view": "table",
+                     "title": "Error Logs: /aws/lambda/sanitized_lambda_function"
+                 }
+             },
+             {
+                 "height": 6,
+                 "width": 5,
+                 "y": 6,
+                 "x": 0,
+                 "type": "metric",
+                 "properties": {
+                     "metrics": [
+                         [ "WorkMail/URLRewriter", "MessageRejectedCount", { "stat": "Sum" } ]
+                     ],
+                     "view": "timeSeries",
+                     "stacked": false,
+                     "region": "my-region",
+                     "period": 300,
+                     "title": "Rejected Messages (Return-Path Format)"
+                 }
+             },
+             {
+                 "height": 6,
+                 "width": 24,
+                 "y": 18,
+                 "x": 0,
+                 "type": "log",
+                 "properties": {
+                     "query": "SOURCE '/aws/workmail/emailevents/example_organization' | fields @timestamp, event.eventName, event.folder, event.from, event.recipients.0, event.spamVerdict, event.spfVerdict, event.dkimVerdict, event.dmarcVerdict, event.dmarcPolicy, event.subject\n\n | filter event.eventName=\"ORGANIZATION_EMAIL_RECEIVED\"\n",
+                     "queryLanguage": "CWLI",
+                     "region": "my-region",
+                     "title": "Log group: /aws/workmail/emailevents/example_organization",
+                     "view": "table"
+                 }
+             },
+{
+                "height": 6,
+                "width": 6,
+                "y": 0,
+                "x": 5,
+                "type": "metric",sanitized-arn
+                "properties": {sanitized-arn
+                    "period": 60,
+                    "metrics": [
+                        [ "AWS/Lambda", "Invocations", "FunctionName", "sanitized_lambda_function", { "stat": "Sum", "region": "my-region" } ]
+                    ],
+                    "region": "my-region",
+                    "title": "Invocations - WorkMail",
+                    "view": "timeSeries",
+                    "stacked": false
+                }
+            },
+            {
+                "height": 6,
+                "width": 6,
+                "y": 0,
+                "x": 11,
+                "type": "metric",
+                "properties": {
+                    "period": 60,
+                    "metrics": [
+                        [ "AWS/Lambda", "Duration", "FunctionName", "sanitized_lambda_function", { "label": "Duration minimum", "stat": "Minimum", "region": "my-region" } ],
+                        [ "...", { "label": "Duration average", "stat": "Average", "region": "my-region" } ],
+                        [ "...", { "label": "Duration maximum", "stat": "Maximum", "region": "my-region" } ]
+                    ],
+                    "region": "my-region",
+                    "view": "timeSeries",
+                    "stacked": false,
+                    "title": "Duration - WorkMail"
+                }
+            },
+            {
+                "height": 6,
+                "width": 6,
+                "y": 0,
+                "x": 17,
+                "type": "metric",
+                "properties": {
+                    "period": 60,
+                    "metrics": [
+                        [ "AWS/Lambda", "Errors", "FunctionName", "sanitized_lambda_function", { "id": "errors", "stat": "Sum", "color": "#d13212", "region": "my-region" } ],
+                        [ ".", "Invocations", ".", ".", { "id": "invocations", "stat": "Sum", "visible": false, "region": "my-region" } ],
+                        [ { "expression": "100 - 100 * errors / MAX([errors, invocations])", "label": "Success rate (%)", "id": "availability", "yAxis": "right", "region": "my-region" } ]
+                    ],
+                    "region": "my-region",
+                    "title": "Error count and success rate (%)",
+                    "yAxis": {
+                        "right": {
+                            "max": 100
+                        }
+                    },
+                    "view": "timeSeries",
+                    "stacked": false
+                }
+            },
+            {
+                "height": 6,
+                "width": 5,
+                "y": 0,
+                "x": 0,
+                "type": "alarm",
+                "properties": {
+                    "alarms": [
+                        "arn:aws:cloudwatch:my-region:123457890123:alarm:sanitized-arn",
+                        "arn:aws:cloudwatch:my-region:123457890123:alarm:sanitized-arn"
+                    ],
+                    "title": "Error Alarms",
+                    "view": "timeSeries"
+                }
+            },
+            {
+                "height": 6,
+                "width": 6,
+                "y": 6,
+                "x": 5,
+                "type": "metric",
+                "properties": {
+                    "period": 60,
+                    "metrics": [
+                        [ "AWS/Lambda", "Invocations", "FunctionName", "sanitized_function_name", { "stat": "Sum", "region": "my-region" } ]
+                    ],
+                    "region": "my-region",
+                    "title": "Invocations - API",
+                    "view": "timeSeries",
+                    "stacked": false
+                }
+            },
+            {
+                "height": 6,
+                "width": 6,
+                "y": 6,
+                "x": 11,
+                "type": "metric",
+                "properties": {
+                    "period": 60,
+                    "metrics": [
+                        [ "AWS/Lambda", "Duration", "FunctionName", "sanitized_function_name", { "label": "Duration minimum", "stat": "Minimum", "region": "my-region" } ],
+                        [ "...", { "label": "Duration average", "stat": "Average", "region": "my-region" } ],
+                        [ "...", { "label": "Duration maximum", "stat": "Maximum", "region": "my-region" } ]
+                    ],
+                    "region": "my-region",
+                    "view": "timeSeries",
+                    "stacked": false,
+                    "title": "Duration - API"
+                }
+            },
+            {
+                "type": "metric",
+                "x": 17,
+                "y": 6,
+                "width": 6,
+                "height": 6,
+                "properties": {
+                    "period": 60,
+                    "metrics": [
+                        [ "AWS/Lambda", "Errors", "FunctionName", "sanitized_function_name", { "id": "errors", "stat": "Sum", "color": "#d13212", "region": "my-region" } ],
+                        [ ".", "Invocations", ".", ".", { "id": "invocations", "stat": "Sum", "visible": false, "region": "my-region" } ],
+                        [ { "expression": "100 - 100 * errors / MAX([errors, invocations])", "label": "Success rate (%)", "id": "availability", "yAxis": "right", "region": "my-region" } ]
+                    ],
+                    "region": "my-region",
+                    "title": "Error count and success rate (%)",
+                    "yAxis": {
+                        "right": {
+                            "max": 100
+                        }
+                    },
+                    "view": "timeSeries",
+                    "stacked": false
+                }
+            }
+        ]
+       }
+       
+Outputs:
+  FunctionArn:
+    Description: ARN of the WorkMail Lambda function
+    Value:!GetAtt WorkMailUrlRewriteFunction.Arn
+    Export:
+      Name:!Sub "${AWS::StackName}-FunctionArn"
+  
+  UpdatedEmailS3BucketName:
+    Description: Name of the S3 bucket created for WorkMail updated messages
+    Value:!Ref UpdatedEmailS3Bucket
+    Export:
+      Name:!Sub "${AWS::StackName}-EmailStorageBucketName"
+  
+  UpdatedEmailS3BucketArn:
+    Description: ARN of the S3 bucket created for WorkMail updated messages
+    Value:!GetAtt UpdatedEmailS3Bucket.Arn
+    Export:
+      Name:!Sub "${AWS::StackName}-EmailStorageBucketArn"
+  
+  MailDirectoryPath:
+    Description: S3 path for email storage
+    Value:!Sub "${UpdatedEmailS3Bucket}/mail/"
+    Export:
+      Name:!Sub "${AWS::StackName}-MailDirectoryPath"
+}

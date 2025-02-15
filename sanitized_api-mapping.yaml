@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: '[sanitized] API Stage and Domain Mapping'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name for resource tagging
+
+  DomainStackName:
+    Type: String
+    Description: Name of the domain setup stack
+
+  BaseStackName:
+    Type: String
+    Description: Name of the base API stack
+
+  DebugMode:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable debug mode for API Gateway
+
+  EnableAccessLogs:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Enable API Gateway access logs
+
+Conditions:
+  IsDebug:!Equals [!Ref DebugMode, "true"]
+  EnableLogs:!Equals [!Ref EnableAccessLogs, "true"]
+
+Resources:
+  AccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: EnableLogs
+    Properties:
+      LogGroupName:!Sub "/aws/apigateway/${AWS::StackName}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Environment
+          Value:!Ref Environment
+        - Key: Service
+          Value: [sanitized]
+        - Key: ManagedBy
+          Value: CloudFormation
+APIStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn: AccessLogGroup
+    Properties:
+      RestApiId:
+        Fn::ImportValue:!Sub "${BaseStackName}-APIId"
+      DeploymentId:
+        Fn::ImportValue:!Sub "${BaseStackName}-DeploymentId"
+      StageName:!Ref Environment
+      Description:!Sub "${Environment} stage for [sanitized] API"
+      Variables:
+        environment:!Ref Environment
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          MetricsEnabled: true
+          DataTraceEnabled:!Ref DebugMode
+          LoggingLevel:!If [IsDebug, "INFO", "ERROR"]
+      AccessLogSetting:!If
+        - EnableLogs
+        - DestinationArn:!GetAtt AccessLogGroup.Arn
+          Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+        -!Ref "AWS::NoValue"
+      Tags:
+        - Key: Environment
+          Value:!Ref Environment
+        - Key: Service
+          Value: [sanitized]
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  APIMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn: APIStage
+    Properties:
+      DomainName:
+        Fn::ImportValue:!Sub "${DomainStackName}-CustomDomainName"
+      RestApiId:
+        Fn::ImportValue:!Sub "${BaseStackName}-APIId"
+      Stage:!Ref APIStage
+Outputs:
+  StageName:
+    Description: API Stage Name
+    Value:!Ref Environment
+    Export:
+      Name:!Sub "${AWS::StackName}-StageName"
+
+  StageARN:
+    Description: API Stage ARN
+    Value:
+      Fn::Sub:
+        - "arn:aws:apigateway:${AWS::Region}::/restapis/${apiId}/stages/${Environment}"
+        - apiId:
+            Fn::ImportValue:!Sub "${BaseStackName}-APIId"
+    Export:
+      Name:!Sub "${AWS::StackName}-StageARN"
