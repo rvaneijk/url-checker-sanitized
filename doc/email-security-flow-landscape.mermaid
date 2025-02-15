@@ -1,0 +1,28 @@
+flowchart LR
+    %% Main Flow - Horizontal Layout
+    A([Email Arrives]):::rounded --> 
+    B([Security Screening]):::rounded --> 
+    C{Safe Platform?}
+
+    C -->|Yes| D([Preserve Original]):::rounded
+    C -->|No| E([Add Security Layer]):::rounded
+    
+    D --> F([Deliver to User]):::rounded
+    E --> F
+    
+    F --> G([User Clicks Link]):::rounded --> 
+    H{Security Checkpoint}
+    
+    H -->|Safe| I([Allow Access]):::success
+    H -->|Suspicious| J([Warning]):::warning
+    H -->|Unsafe| K([Block]):::danger
+
+    %% Styling
+    classDef rounded rx:10,ry:10
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px,color:#333
+    classDef success fill:#f9f9f9,stroke:#2ecc71,stroke-width:2px,color:#333
+    classDef warning fill:#f9f9f9,stroke:#f1c40f,stroke-width:2px,color:#333
+    classDef danger fill:#f9f9f9,stroke:#e74c3c,stroke-width:2px,color:#333
+
+    %% Link styling
+    linkStyle default stroke:#666,stroke-width:2px

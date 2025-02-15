@@ -1,0 +1,53 @@
+%%{init: {'theme': 'default', 'themeVariables': { 'fontSize': '16px', 'fontFamily': 'arial' }}}%%
+flowchart TD
+    subgraph Mail["Email Processing"]
+        Email([Incoming Email])
+        WM[AWS WorkMail]
+        WML[URL Rewriter Lambda]
+        S3[(Email Storage)]
+        
+        Email --> WM
+        WM --> WML
+        WML --> S3
+        S3 -.->|1 Day Retention| S3
+    end
+
+    subgraph Security["URL Security"]
+        API[API Gateway]
+        Check[URL Checker]
+        
+        WML -->|Modified URLs| API
+        API --> Check
+        
+        Check --> V1{Internal?}
+        Check --> V2{Auth URL?}
+        Check --> V3{Safe Browsing}
+        
+        V1 -->|Yes| Block[Block]
+        V1 -->|No| V2
+        V2 -->|Yes| Allow[Allow]
+        V2 -->|No| V3
+        V3 -->|Safe| Allow
+        V3 -->|Unsafe| Warn[Warning]
+    end
+
+    subgraph Monitor["Monitoring"]
+        CW[CloudWatch]
+        AL[Alarms]
+        
+        WML -.-> CW
+        Check -.-> CW
+        API -.-> CW
+        
+        CW --> AL
+    end
+
+    subgraph DNS["Domain Setup"]
+        R53[Route 53]
+        Cert[Certificate]
+        Dom[check.example.com]
+        
+        R53 --> Dom
+        Cert --> Dom
+        Dom --> API
+    end
