@@ -1,6 +1,6 @@
 # AI-Learning by Building: Creating an Enterprise-Grade Email Security System for Personal Use
 
-Note: This blog is written for readers without a technical background - every technical term is explained in plain language with Lego analogies in the [Glossary of Terms](#glossary-of-terms). I'd love to hear whether you'd like to see more articles like this one.
+Note: This blog is written for readers without a technical background - every technical term is explained in plain language in the [Glossary of Terms](#glossary-of-terms). I'd love to hear whether you'd like to see more articles like this one.
 
 ## Summary
 
