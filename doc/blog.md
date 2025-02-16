@@ -8,11 +8,11 @@ This blog describes how AI-assisted development helped create an enterprise-grad
 
 Like a well-designed Lego structure, the system consists of interconnected components that work together to examine incoming emails and verify web links before they reach users. 
 
-Each piece serves a specific purpose, from initial email processing to [Real-time Monitoring](#glossary-of-terms), creating a robust environment for the organization's communications.
+Each piece serves a specific purpose, from initial email processing to Real-time Monitoring, creating a robust environment for the organization's communications.
 
 The solution addresses a common challenge: maintaining consistent protection across different email platforms and devices. Built using Infrastructure as Code and integrated with Amazon WorkMail, it provides capabilities similar to enterprise solutions but at a scale and cost suitable for smaller organizations. The system is designed to protect against current threats while maintaining the flexibility to adapt to new challenges, much like how Lego pieces can be reconfigured to meet new requirements.
 
-Continuous system monitoring (called "[Real-time Monitoring](#glossary-of-terms)" - like having a control panel overlooking our entire Lego city, showing how each part is functioning in the moment) ensures reliable operation, while future developments will leverage AI for enhanced [Threat Detection](#glossary-of-terms) (like having sensors throughout our Lego city that can spot potential problems before they cause harm). This practical example demonstrates how modern development tools and cloud services can help small organizations implement enterprise-grade protection systems.
+Continuous system monitoring (called "Real-time Monitoring" - like having a control panel overlooking our entire Lego city, showing how each part is functioning in the moment) ensures reliable operation, while future developments will leverage AI for enhanced [Threat Detection](#glossary-of-terms) (like having sensors throughout our Lego city that can spot potential problems before they cause harm). This practical example demonstrates how modern development tools and cloud services can help small organizations implement enterprise-grade protection systems.
 
 ## Source Code
 
@@ -90,14 +90,14 @@ The checkpoint also consults [Google Safe Browsing API](https://safebrowsing.goo
 
 ## Performance and Reliability Tracking
 
-A monitoring system provides continuous oversight of all operations. At the heart of our monitoring are two essential functions: (1) the WorkMail function for processing emails and (2) the API function for security checkpoints. To ensure the system runs smoothly, I've created a comprehensive [Monitoring Dashboard](#glossary-of-terms) (Figure 3) that displays eight key metrics in real time. These metrics help us maintain optimal performance and quickly identify any potential issues. 
+A monitoring system provides continuous oversight of all operations. At the heart of our monitoring are two essential functions: (1) the WorkMail function for processing emails and (2) the API function for security checkpoints. To ensure the system runs smoothly, I've created a comprehensive monitoring dashboard (Figure 3) that displays eight key metrics in real time. These metrics help us maintain optimal performance and quickly identify any potential issues. 
 
 The WorkMail metrics track how effectively emails are being processed, while the API metrics monitor our security checkpoint's performance. Both components are closely monitored for any errors or performance issues, with automated alerts for critical events.
 
 <p align="center">
-  <img src="dashboard.png" alt="System [Monitoring Dashboard](#glossary-of-terms)" width="80%">
+  <img src="dashboard.png" alt="System Monitoring Dashboard" width="80%">
 </p>
-<p align="center"><em>Figure 3. System [Monitoring Dashboard](#glossary-of-terms).</em></p>
+<p align="center"><em>Figure 3. System Monitoring D.</em></p>
 
 The WorkMail metrics track the system's core functionality (Figure 3, widgets on the top row). We can see how many emails are being processed and how quickly they're handled, maintaining a consistently high success rate.
 
@@ -150,29 +150,17 @@ This gradual improvement approach allows us to enhance security while keeping th
 
 ## Glossary of Terms
 
-- **Access Control**: A security system that regulates who or what can view or use resources. Like special Lego doors that only open for specific Lego figures with the right keys, it ensures only authorized users can access specific areas or information.
-
-- **Application Programming Interface (API)**: A standardized way for different computer systems to communicate, like a universal translator between different services.
-
-- **Audit Logging**: A system that creates and maintains detailed records of all activities and events, similar to taking pictures of each step while building a complex Lego structure to show it was built correctly according to instructions.
+- **Application Programming Interface (API)**: A standardized way for different computer systems to communicate and share information, acting as a universal translator between different services.
 
 - **CloudWatch**: Amazon's monitoring service that acts like a control room overlooking an entire Lego city, collecting and displaying information about how every part of the city is functioning.
 
-- **Data Retention**: Rules for how long to keep different types of information, like having clear instructions for how long to keep different Lego structures assembled before taking them apart and storing or recycling the pieces according to specific guidelines.
-
-- **End-to-end Encryption**: A security measure that protects information by encoding it during transmission, similar to sending a sealed envelope that only the intended recipient can open.
-
 - **Infrastructure as Code (IaC)**: Like having official Lego instruction manuals that not only show how to build the structure but also ensure everyone builds it exactly the same way every time, even when building multiple copies.
 
-- **IAM (Identity and Access Management)**: Like a set of special Lego keys and doors, determining which Lego figures can access different parts of the city based on their role and permissions.
+- **IAM (Identity and Access Management)**: A framework that controls which users and systems can access specific resources based on their roles and permissions.
 
 - **Lambda Function**: A cloud computing service that runs specific tasks or programs automatically in response to certain events - like automated Lego machines that activate exactly when needed and only use power while working.
 
 - **Large Language Model (LLM)**: An advanced artificial intelligence system trained to understand and process human language, like having an expert Lego builder who can understand complex building instructions and explain them in simple terms.
-
-- **Monitoring Dashboard**: A central display showing real-time information about system performance and security, like having a control panel overlooking an entire Lego city showing how each part is functioning.
-
-- **Real-time Monitoring**: Continuous observation of system activities as they happen, like watching a Lego train system in operation and monitoring all the signals, switches, and movements as they occur.
 
 - **S3 (Simple Storage Service)**: Amazon's secure digital storage service, like a massive, organized Lego brick storage system where each piece is labeled, protected, and easily retrievable when needed.
 
@@ -181,7 +169,6 @@ This gradual improvement approach allows us to enhance security while keeping th
 - **Threat Detection**: Automated systems that identify potential security risks, like having sensors throughout a Lego city that can detect unauthorized changes or potential problems in the construction.
 
 - **Uniform Resource Locator (URL)**: Web address - the text you type into a web browser to visit a website.
-
 
 
 ## Appendix: System Architecture and Features
@@ -196,12 +183,12 @@ Our infrastructure implements the following measures across all [stacks](#glossa
 
 | Feature | Implementation | Primary Stack |
 |---------|----------------|---------------|
-| [End-to-end Encryption](#glossary-of-terms) | SSL/TLS certificates and secure channels | Domain Stack |
-| [Audit Logging](#glossary-of-terms) | Detailed activity tracking with Amazon CloudWatch](#glossary-of-terms) | API Mapping Stack |
+| End-to-end Encryption | SSL/TLS certificates and secure channels | Domain Stack |
+| Audit Logging | Detailed activity tracking with Amazon CloudWatch](#glossary-of-terms) | API Mapping Stack |
 | [Threat Detection](#glossary-of-terms) | Integration with Google Safe Browsing API | API Base Stack |
-| [Real-time Monitoring](#glossary-of-terms) | CloudWatch dashboards and alerts | WorkMail Stack |
-| [Data Retention](#glossary-of-terms) | Configurable S3 lifecycle policies | WorkMail Stack |
-| [Access Control](#glossary-of-terms) | IAM roles and headers | API Base Stack |
+| Real-time Monitoring | CloudWatch dashboards and alerts | WorkMail Stack |
+| Data Retention | Configurable S3 lifecycle policies | WorkMail Stack |
+| Access Control | IAM roles and headers | API Base Stack |
 
 ### Components and Their Roles
 
