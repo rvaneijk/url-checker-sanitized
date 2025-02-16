@@ -160,7 +160,7 @@ This gradual improvement approach allows us to enhance security while keeping th
 
 - **Lambda Function**: A cloud computing service that runs specific tasks or programs automatically in response to certain events - like automated Lego machines that activate exactly when needed and only use power while working.
 
-- **Large Language Model (LLM)**: An advanced artificial intelligence system trained to understand and process human language,.
+- **Large Language Model (LLM)**: An advanced AI system trained to understand and process human language,.
 
 - **S3 (Simple Storage Service)**: Amazon's secure digital storage service, like a massive, organized Lego brick storage system where each piece is labeled, protected, and easily retrievable when needed.
 
