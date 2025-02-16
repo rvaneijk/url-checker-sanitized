@@ -160,13 +160,13 @@ This gradual improvement approach allows us to enhance security while keeping th
 
 - **Lambda Function**: A cloud computing service that runs specific tasks or programs automatically in response to certain events - like automated Lego machines that activate exactly when needed and only use power while working.
 
-- **Large Language Model (LLM)**: An advanced artificial intelligence system trained to understand and process human language, like having an expert Lego builder who can understand complex building instructions and explain them in simple terms.
+- **Large Language Model (LLM)**: An advanced artificial intelligence system trained to understand and process human language,.
 
 - **S3 (Simple Storage Service)**: Amazon's secure digital storage service, like a massive, organized Lego brick storage system where each piece is labeled, protected, and easily retrievable when needed.
 
 - **Stack**: A collection of cloud resources that work together as a single unit, like a complete set of Lego pieces that form a specific structure. For example, our email security system uses several stacks - one for handling the web address, another for checking links, and another for processing emails.
 
-- **Threat Detection**: Automated systems that identify potential security risks, like having sensors throughout a Lego city that can detect unauthorized changes or potential problems in the construction.
+- **Threat Detection**: Automated systems that identify potential security risks.
 
 - **Uniform Resource Locator (URL)**: Web address - the text you type into a web browser to visit a website.
 
