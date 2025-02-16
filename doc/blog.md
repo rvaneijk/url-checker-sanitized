@@ -201,7 +201,7 @@ Key functions:
 - Maintains system credentials
 
 #### 2. Main Screening (API Base Stack)
-Think of this component as the checkpoint in our Lego city. Like specialized Lego pieces that serve specific functions, this [stack](#stack) contains dedicated screening tools. It checks every web link against Google's database of known threats, similar to how a scanner would check visitors entering a Lego city's important buildings.
+Think of this component as the checkpoint in our Lego city. Like specialized Lego pieces that serve specific functions, this [stack](#glossary-of-terms) contains dedicated screening tools. It checks every web link against Google's database of known threats, similar to how a scanner would check visitors entering a Lego city's important buildings.
 
 Key functions:
 - Screens links for potential threats
@@ -210,7 +210,7 @@ Key functions:
 - Maintains screening records
 
 #### 3. Monitoring (API Mapping Stack)
-This component acts like the control room of our Lego system, with monitors and recording devices watching over all operations. Just as Lego cities might have cameras and monitoring stations, this [stack](#stack) keeps detailed records of all activities, ensuring nothing goes unnoticed and everything is properly documented for compliance purposes.
+This component acts like the control room of our Lego system, with monitors and recording devices watching over all operations. Just as Lego cities might have cameras and monitoring stations, this [stack](#glossary-of-terms) keeps detailed records of all activities, ensuring nothing goes unnoticed and everything is properly documented for compliance purposes.
 
 Key functions:
 - Records all activities
@@ -218,7 +218,7 @@ Key functions:
 - Enables comprehensive review
 
 #### 4. Email Processing (WorkMail Stack)
-Imagine this as the mail sorting facility in our Lego city, where each piece of mail is carefully inspected before delivery. This [stack](#stack) processes all incoming email communications, examining them in a protected environment. Like a sophisticated Lego mail processing center, it handles everything from initial inspection to storage.
+Imagine this as the mail sorting facility in our Lego city, where each piece of mail is carefully inspected before delivery. This [stack](#glossary-of-terms) processes all incoming email communications, examining them in a protected environment. Like a sophisticated Lego mail processing center, it handles everything from initial inspection to storage.
 
 Key functions:
 - Pre-delivery screening
