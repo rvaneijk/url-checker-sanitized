@@ -4,6 +4,8 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
 
+**This code has been sanitized, meaning all sensitive information like passwords, API keys, and internal system details have been removed and replaced with example values.**
+
 # WorkMail URL Rewriter with AWS Lambda
 
 This project implements an AWS WorkMail integration that processes incoming emails using AWS Lambda. The system enhances email security by rewriting URLs through a security checking service, with built-in security features and lifecycle management.
