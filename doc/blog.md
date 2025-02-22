@@ -184,7 +184,7 @@ Our infrastructure implements the following measures across all [stacks](#glossa
 | Feature | Implementation | Primary Stack |
 |---------|----------------|---------------|
 | End-to-end Encryption | SSL/TLS certificates and secure channels | Domain Stack |
-| Audit Logging | Detailed activity tracking with Amazon CloudWatch](#glossary-of-terms) | API Mapping Stack |
+| Audit Logging | Detailed activity tracking with Amazon [CloudWatch]#glossary-of-terms) | API Mapping Stack |
 | [Threat Detection](#glossary-of-terms) | Integration with Google Safe Browsing API | API Base Stack |
 | Real-time Monitoring | CloudWatch dashboards and alerts | WorkMail Stack |
 | Data Retention | Configurable S3 lifecycle policies | WorkMail Stack |
